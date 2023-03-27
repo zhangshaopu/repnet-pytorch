@@ -146,8 +146,8 @@ def training_loop(n_epochs,
                 torch.cuda.empty_cache()
                 model.train()
                 num_frames = X.shape[1]
-                X = X.to(device).float() # [num_frames, 64, 3, 112, 112]
-                y = y.to(device).float() # [num_frames,64,32]
+                X = X.to(device).float() # [ 64, 3, 112, 112]
+                y = y.to(device).float() # [ 64, 32 ]
                 yp = yp.to(device)
                 # idxes = torch.arange(0,1280,1)
                 # idxes = torch.clamp(idxes,0,num_frames - 1).to(device)
@@ -244,7 +244,7 @@ def training_loop(n_epochs,
             torch.save(checkpoint, 
                        'checkpoint/' + ckpt_name + str(epoch) + '.pt')
         
-        #lr_scheduler.step()
+        # lr_scheduler.step()
     writer.close()
     return trainLosses, valLosses
 

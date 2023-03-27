@@ -37,6 +37,7 @@ class miniDataset(Dataset):
         
         print(" file: " , path)
         print(" fps: ", self.fps)
+        print("count:",self.count)
         while cap.isOpened():
             ret, frame = cap.read()
             if ret is False:
@@ -61,24 +62,27 @@ class miniDataset(Dataset):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
             frameTensor = preprocess(img).unsqueeze(0)
             Xlist.append(frameTensor)
-        
+        while len(Xlist) < 640:
+            Xlist.append(Xlist[-1])
 
-        stride = max(self.numFrames // 64 , 1)
-        X = Xlist[::stride][:64]
-        if len(X) < 64:
-            last_frame = Xlist[-1]
-            num_pad_frames = 64 - len(X)
-            pad_frames = torch.repeat_interleave(last_frame, num_pad_frames, dim=0)
-            X = np.concatenate((torch.cat(X), pad_frames), axis=0)
-        X = torch.cat(X)
+        X = torch.cat(Xlist) 
+        # stride = max(self.numFrames // 64 , 1)
+        # X = Xlist[::stride][:64]
+        # if len(X) < 64:
+        #     last_frame = Xlist[-1]
+        #     num_pad_frames = 64 - len(X)
+        #     pad_frames = torch.repeat_interleave(last_frame, num_pad_frames, dim=0)
+        #     X = np.concatenate((torch.cat(X), pad_frames), axis=0)
+        # X = torch.cat(X)
         # X = torch.cat(Xlist) # (numFrames , 3, 112, 112)
 
-        y1 = torch.zeros(64)   
+        y1 = torch.zeros(640)   
         y1[:] = self.count 
+        
 
-        y2 = torch.zeros((64 , 1))
-        y2[:, ] = 1 # (64 , 1)
-
+        y2 = torch.zeros((640, 1))
+        y2[:self.numFrames, ] = 1 # (1280 , 1)
+        y2[self.numFrames : 640, ] = 0
         # y.extend([output_len/self.count if 1<output_len/self.count<32 else 0 for i in range(0, output_len)])
         
         # y.extend( [ 0 for i in range(0, b)] )

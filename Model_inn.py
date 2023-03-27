@@ -255,7 +255,7 @@ class RepNet(nn.Module):
         self.fc2_3 = nn.Linear(self.num_frames//2, 1)
 
     def forward(self, x, ret_sims = False):
-        batch_size, _, c, h, w = x.shape # batch_size = 1
+        batch_size, _, c, h, w = x.shape # batch_size = 20
         x = x.view(-1, c, h, w) # [64, 3, 112, 112]
         x = self.resnetBase(x) # [64, 1024, 7, 7]
         x = x.view(batch_size, self.num_frames, x.shape[1],  x.shape[2],  x.shape[3]) # [1, 64, 1024, 7, 7]
