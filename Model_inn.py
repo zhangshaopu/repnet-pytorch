@@ -26,6 +26,31 @@ class Sims(nn.Module):
         out = F.softmax(-out/13.544, dim = -1)
         return out
 
+
+
+# class SimilarityModel(nn.Module):
+#     def __init__(self, temperature):
+#         super(SimilarityModel, self).__init__()
+#         self.temperature = temperature
+
+#     def pairwise_l2_distance(self, embs):
+#         """Calculates pairwise L2 distance between embeddings."""
+#         diff = embs.unsqueeze(1) - embs.unsqueeze(2)
+#         dist = torch.norm(diff, dim=-1, p=2)
+#         return dist
+
+#     def forward(self, embs):
+#         batch_size = embs.size(0)
+#         seq_len = embs.size(1)
+#         embs = embs.view(batch_size, seq_len, -1)
+#         dist = F.pairwise_distance(embs,embs)
+#         dist = self.pairwise_l2_distance(embs)
+#         sims = -1.0 * dist
+#         sims /= self.temperature
+#         sims = torch.softmax(sims, dim=-1)
+#         sims = sims.unsqueeze(-1)
+#         return sims
+
 #---------------------------------------------------------------------------
 
 class ResNet50Bottom(nn.Module):
