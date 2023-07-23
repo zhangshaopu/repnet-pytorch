@@ -7,6 +7,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader, ConcatDataset
 from IPython.display import clear_output
 import torch.nn.functional as F
+import seaborn as sns
 from torch.utils.tensorboard import SummaryWriter
 
 use_cuda = torch.cuda.is_available()
@@ -15,6 +16,7 @@ device = torch.device("cuda" if use_cuda else "cpu")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
+simres = []
 #============metrics ==================
 def MAE(y, ypred) :
     """for period"""
@@ -111,7 +113,7 @@ def training_loop(n_epochs,
                               batch_size=batch_size, 
                               num_workers=0, 
                               shuffle = True,
-                              )
+                            )
     #迭代获取数据
     # for batch_idx, (data, target) in enumerate(train_loader):
     #     # 打印数据的形状和标签
@@ -142,25 +144,33 @@ def training_loop(n_epochs,
             i = 0
             a=0
             num_frames = 0
-            for X, y, yp in pbar: # y表示Period Length Predictor   yp表示Periodicity Predictor
+            for X, y1, y2 in pbar: # y1表示Period Length Predictor[1,64,32]   y2表示Periodicity Predictor[1,64,1] 
                 torch.cuda.empty_cache()
+
                 model.train()
-                num_frames = X.shape[1]
-                X = X.to(device).float() # [ 64, 3, 112, 112]
-                y = y.to(device).float() # [ 64, 32 ]
-                yp = yp.to(device)
+                batch_size ,num_frames= X.shape[0],X.shape[1]
+                # X = X.reshape((10, 64, 3, 112, 112))
+                y1 = y1.reshape((batch_size, 64,32))
+                y2 = y2.reshape((batch_size, 64,1))
+                X = X.to(device).float() # [1, 64, 3, 112, 112]
+                y1 = y1.to(device).float() # [1, 64, 32 ]
+                y2 = y2.to(device) # [1,64,1]
                 # idxes = torch.arange(0,1280,1)
                 # idxes = torch.clamp(idxes,0,num_frames - 1).to(device)
                 # curr_frames  = torch.gather(X , 1 , idxes)
                 # curr_frames.reshape(20 , 64 ,3 , 112 ,112)
 
                 # y2 = getPeriodicity(y1).to(device).float() # [1,64,1]
-                
+                # for i in range(10):
                 y1pred, y2pred , _ = model(X) # [1, 64, 32]  [1, 64, 1]
+                tmp = simres[0].cpu().detach().numpy().squeeze()
+                sns.heatmap(data=tmp,square=True) 
+                # plt.imshow(tmp, cmap=cmap, interpolation='nearest')
+                plt.show()
                 # loss1 = lossMAE(y1pred, y1) # [1, 64, 32]  [1, 64, 1]
                 # loss1 = lossCrossEntropy(y1pred.squeeze(0) , y.squeeze(0).squeeze(1)) # [64, 32]  [64, ]
-                loss1 = lossCrossEntropy(y1pred.view(-1,32),y.view(-1).long())
-                loss2 = lossBCE(y2pred, yp) # [1,64,1] [1,64,1]
+                loss1 = lossCrossEntropy(y1pred, y1.argmax(dim=1))
+                loss2 = lossBCE(y2pred.squeeze(), y2.squeeze()) # [1,64,1] [1,64,1]
 
                 loss = loss1 + 5*loss2
 
@@ -176,20 +186,20 @@ def training_loop(n_epochs,
                 
                 optimizer.zero_grad()
                 loss.backward()
-                               
+                            
                 optimizer.step()
                 train_loss = loss.item()
                 trainLosses.append(train_loss)
                 mae += loss1.item()
                 # mae_count += loss3.item()
                 
-                del X, y, yp, y1pred, y2pred
+                
                 i+=1
                 pbar.set_postfix({'Epoch': epoch,
-                                  'MAE_period': (mae/i),
+                                'MAE_period': (mae/i),
                                 #   'MAE_count' : (mae_count/i),
-                                  'Mean Tr Loss':np.mean(trainLosses[-i+1:])})
-                
+                                'Mean Tr Loss':np.mean(trainLosses[-i+1:])})
+                del X, y1, y2, y1pred, y2pred
                 
         if validate:
             #validation loop
@@ -200,12 +210,12 @@ def training_loop(n_epochs,
                 i = 1
                 pbar = tqdm(val_loader, total = len(val_loader))
 
-                for X, y in pbar:
+                for X, y1 in pbar:
 
                     torch.cuda.empty_cache()
                     model.eval()
                     X = X.to(device).float()
-                    y1 = y.to(device).float()
+                    y1 = y1.to(device).float()
                     y2 = getPeriodicity(y1).to(device).float()
                     
                     y1pred, y2pred = model(X)
@@ -226,7 +236,7 @@ def training_loop(n_epochs,
                     mae += loss1.item()
                     mae_count += loss3.item()
                     
-                    del X, y, y1, y2, y1pred, y2pred
+                    del X, y1, y1, y2, y1pred, y2pred
                     i+=1
                     pbar.set_postfix({'Epoch': epoch,
                                     'MAE_period': (mae/i),

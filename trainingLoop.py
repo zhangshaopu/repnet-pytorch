@@ -26,6 +26,7 @@ device = torch.device("cuda" if use_cuda else "cpu")
 frame_per_vid = 64
 multiple = False
 
+
 testDatasetC = getCombinedDataset('countix/countix_test.csv',
                                    'E:/dataset/testvids',
                                    'test',
@@ -80,7 +81,7 @@ if __name__ == '__main__':
                                     model,
                                     sampleDatasetA,
                                     sampleDatasetB,
-                                    1,
+                                    10,
                                     6e-5,
                                     'x3dbb',
                                     use_count_error=False,

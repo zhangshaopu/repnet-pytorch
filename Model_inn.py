@@ -3,29 +3,43 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import math
-
+from trainLoop import simres
 #============classes===================
 # compute Temporal Self-similarity Matrix
+# class Sims(nn.Module):
+#     def __init__(self):
+#         super(Sims, self).__init__()
+#         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+#         self.bn = nn.BatchNorm2d(1)
+        
+#     def forward(self, x):#(1,64,512)
+#         '''(N, S, E)  --> (N, 1, S, S)'''
+#         f = x.shape[1]
+        
+#         I = torch.ones(f).to(self.device)
+#         xr = torch.einsum('bfe,h->bhfe', (x, I))   #[x, x, x, x ....]  =>  xr[:,0,:,:] == x
+#         xc = torch.einsum('bfe,h->bfhe', (x, I))   #[x x x x ....]     =>  xc[:,:,0,:] == x
+#         diff = xr - xc
+#         out = torch.einsum('bfge,bfge->bfg', (diff, diff))
+#         out = out.unsqueeze(1)
+#         #out = self.bn(out)
+#         out = F.softmax(-out/13.544, dim = -1)
+#         return out
 class Sims(nn.Module):
-    def __init__(self):
+    def __init__(self,temperature=13.544):
         super(Sims, self).__init__()
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.bn = nn.BatchNorm2d(1)
-        
+        self.pairwise_distance = nn.PairwiseDistance(p=2)
+        self.temperature = temperature
     def forward(self, x):
-        '''(N, S, E)  --> (N, 1, S, S)'''
-        f = x.shape[1]
-        
-        I = torch.ones(f).to(self.device)
-        xr = torch.einsum('bfe,h->bhfe', (x, I))   #[x, x, x, x ....]  =>  xr[:,0,:,:] == x
-        xc = torch.einsum('bfe,h->bfhe', (x, I))   #[x x x x ....]     =>  xc[:,:,0,:] == x
-        diff = xr - xc
-        out = torch.einsum('bfge,bfge->bfg', (diff, diff))
-        out = out.unsqueeze(1)
-        #out = self.bn(out)
-        out = F.softmax(-out/13.544, dim = -1)
-        return out
-
+        # 计算每个向量之间的欧式距离
+        # distances = self.pairwise_distance(x,x)
+        distances = torch.cdist(x, x, p=2) #(1,64,64)
+        similarities = -distances / self.temperature
+        similarities = F.softmax(similarities, dim=-1)
+        # 将相似度分布张量重塑为形状为 (batch_size, sequence_length, sequence_length, 1)
+        similarities = similarities.unsqueeze(1)#(1,1,64,64)
+        return similarities
 #---------------------------------------------------------------------------
 
 class ResNet50Bottom(nn.Module):
@@ -161,15 +175,23 @@ class RepNet(nn.Module):
                  period_fc_channels=(512, 512),
                  within_period_fc_channels=(512, 512),
                  dropout_rate = 0.25,
+                 temperature=13.544,
+                 l2_reg_weight=1e-6,
+                 temporal_conv_channels=512,
+                 temporal_conv_kernel_size=3,
+                 temporal_conv_dilation_rate=3,
                 ):
         super(RepNet, self).__init__()
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        
+        self.temporal_conv_channels = temporal_conv_channels
+        self.temporal_conv_kernel_size = temporal_conv_kernel_size
+        self.temporal_conv_dilation_rate = temporal_conv_dilation_rate
+
         self.num_frames = num_frames # 64
 
         self.resnetBase = ResNet50Bottom()
         
-        
+        # 3D Conv on k Frames
         self.conv3D = nn.Conv3d(in_channels = 1024,
                                 out_channels = 512,
                                 kernel_size = 3,
@@ -255,7 +277,7 @@ class RepNet(nn.Module):
         self.fc2_3 = nn.Linear(self.num_frames//2, 1)
 
     def forward(self, x, ret_sims = False):
-        batch_size, _, c, h, w = x.shape # batch_size = 20
+        batch_size,_, c, h, w = x.shape # (1,64,3,112,112)
         x = x.view(-1, c, h, w) # [64, 3, 112, 112]
         x = self.resnetBase(x) # [64, 1024, 7, 7]
         x = x.view(batch_size, self.num_frames, x.shape[1],  x.shape[2],  x.shape[3]) # [1, 64, 1024, 7, 7]
@@ -267,8 +289,9 @@ class RepNet(nn.Module):
         x = x.transpose(1, 2)                           #batch, num_frame, 512 [1, 64, 512]
         x = x.reshape(batch_size, self.num_frames, -1) # [1, 64, 512]
         final_embs = x # 原始输入经过resnet后再经过池化和变换后的输出
-        x1 = F.relu(self.sims(x)) # [1, 1, 64, 64] TSM 
         
+        x1 = F.relu(self.sims(x)) # [1, 1, 64, 64] TSM 
+        simres.append(x1)
         
         # x = x.transpose(0, 1) # [64, 1, 512]
         # _, x2 = self.mha_sim(x, x, x) # [1, 64, 64]

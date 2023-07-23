@@ -62,27 +62,41 @@ class miniDataset(Dataset):
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
             frameTensor = preprocess(img).unsqueeze(0)
             Xlist.append(frameTensor)
-        while len(Xlist) < 640:
+        while len(Xlist) < 64:
             Xlist.append(Xlist[-1])
 
-        X = torch.cat(Xlist) 
-        # stride = max(self.numFrames // 64 , 1)
-        # X = Xlist[::stride][:64]
-        # if len(X) < 64:
-        #     last_frame = Xlist[-1]
-        #     num_pad_frames = 64 - len(X)
-        #     pad_frames = torch.repeat_interleave(last_frame, num_pad_frames, dim=0)
-        #     X = np.concatenate((torch.cat(X), pad_frames), axis=0)
-        # X = torch.cat(X)
-        # X = torch.cat(Xlist) # (numFrames , 3, 112, 112)
-
-        y1 = torch.zeros(640)   
-        y1[:] = self.count 
         
+        # 等间隔采样64帧
+        sample_points = np.linspace(0,self.numFrames - 1, 64 , dtype=np.int)
+        # 从每个子区间选取第一帧作为代表帧
+        sample_frames = []
+        for i in range(64 - 1):
+            start,end = sample_points[i],sample_points[i+1]
+            sample_frames.append(Xlist[start])
+        sample_frames.append(Xlist[self.numFrames - 1])
+        X = torch.cat(sample_frames) #(64,3,112,112)
 
-        y2 = torch.zeros((640, 1))
-        y2[:self.numFrames, ] = 1 # (1280 , 1)
-        y2[self.numFrames : 640, ] = 0
+        #y1表示周期预期长度 y2表示周期性
+        if(self.numFrames <= 64):
+            length_stride = self.numFrames / self.count
+        else :
+            length_stride = 64 / self.count
+        y1 = torch.zeros((64,32))   
+        length = 0 # 周期长度初始为1
+        start = 0
+        for end in np.around(np.arange(0,65,length_stride)):
+            y1[start:int(end),length] = 1
+            length += 1
+            start = int(end)
+            if start >= 64:
+                break
+
+                
+        y2 = torch.zeros((64, 1))
+        if(self.numFrames >= 64):
+            y2[:self.numFrames, ] = 1 # (64 , 1)
+        else :
+            y2[self.numFrames : 64] = 0
         # y.extend([output_len/self.count if 1<output_len/self.count<32 else 0 for i in range(0, output_len)])
         
         # y.extend( [ 0 for i in range(0, b)] )
@@ -126,6 +140,7 @@ def getCombinedDataset(dfPath, videoDir, videoPrefix,frame_per_vid,multiple):
     
     files_present = []
     for i in range(0, len(df)):
+        
         path_to_video = path_prefix + str(i) + '.mp4'
         if os.path.exists(path_to_video):
             files_present.append(i)
@@ -135,6 +150,7 @@ def getCombinedDataset(dfPath, videoDir, videoPrefix,frame_per_vid,multiple):
     miniDatasetList = []
     for i in range(0, len(df)):
         dfi = df.iloc[[i]]
+        if dfi.iloc[0]['count'] >= 32 : continue
         path_to_video = path_prefix + str(dfi.index.item()) +'.mp4'
         miniDatasetList.append(miniDataset(dfi, path_to_video))
         
